@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANAC Slides - React + Tailwind (v2)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono&display=swap");
+
+        :root {
+            --background: #ffffff;
+            --foreground: #09090b;
+            --muted: #f4f4f5;
+            --muted-foreground: #71717a;
+            --popover: #ffffff;
+            --popover-foreground: #09090b;
+            --border: #e4e4e7;
+            --input: #e4e4e7;
+            --primary: #18181b;
+            --primary-foreground: #fafafa;
+            --secondary: #f4f4f5;
+            --secondary-foreground: #18181b;
+            --destructive: #ef4444;
+            --destructive-foreground: #fafafa;
+            --ring: #18181b;
+            --radius: 0.5rem;
+        }
+
+        * { border-color: var(--border); }
+        body { font-family: 'Inter', sans-serif; background-color: var(--background); color: var(--foreground); margin: 0; }
+
+        #editor {
+            font-family: 'JetBrains Mono', monospace;
+            resize: none;
+            outline: none;
+            width: 100%;
+            height: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            line-height: 1.6;
+            border: none;
+            box-sizing: border-box;
+        }
+
+        .toolbar-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 0.375rem; font-weight: 500;
+            transition: background-color 0.2s;
+            height: 2rem; width: 2rem;
+            color: var(--foreground); background: transparent; border: none; cursor: pointer;
+        }
+        .toolbar-btn:hover { background-color: var(--muted); }
+        .toolbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .toolbar-sep { width: 1px; height: 1.25rem; background-color: var(--border); margin: 0 0.25rem; }
+
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 50; }
+        .modal-content { background: var(--background); border-radius: var(--radius); padding: 1.5rem; width: 100%; max-width: 32rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.25rem; }
+        .form-control { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem; font-size: 0.875rem; box-sizing: border-box; }
+        .form-control:focus { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+        .dropdown-content {
+            display: none; position: absolute; right: 0; background-color: var(--popover);
+            min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.1);
+            z-index: 10; border: 1px solid var(--border); border-radius: 0.375rem;
+            padding: 0.25rem; margin-top: 0.25rem;
+        }
+        .dropdown-content.open { display: block; }
+        .dropdown-item {
+            color: var(--foreground); padding: 0.375rem 0.5rem; text-decoration: none;
+            display: flex; align-items: center; font-size: 0.875rem;
+            border-radius: 0.25rem; cursor: pointer; gap: 0.5rem;
+        }
+        .dropdown-item:hover { background-color: var(--muted); }
+
+        .tag-input { display: flex; flex-wrap: wrap; gap: 0.375rem; padding: 0.375rem; border: 1px solid var(--border); border-radius: 0.375rem; cursor: text; min-height: 2.25rem; }
+        .tag-input:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+        .tag { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.125rem 0.5rem; border-radius: 999px; font-size: 0.8rem; font-weight: 500; }
+        .tag-remove { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; font-size: 0.7rem; line-height: 1; }
+        .tag-input input { border: none; outline: none; flex: 1; min-width: 80px; font-size: 0.875rem; padding: 0.125rem 0.25rem; background: transparent; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+var ANAC_DEFAULTS = { anac20anosAzulCover: '', anac20anosAzulClose: '' };
+</script>
+<script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, createContext, useContext } = React;
+
+        // ---- Icon component ----
+        function Icon({ name, className }) {
+            const ref = useRef(null);
+            useEffect(() => {
+                if (ref.current) {
+                    ref.current.innerHTML = '';
+                    const el = document.createElement('i');
+                    el.setAttribute('data-lucide', name);
+                    if (className) el.className = className;
+                    ref.current.appendChild(el);
+                    lucide.createIcons();
+                }
+            }, [name, className]);
+            return React.createElement('span', { ref });
+        }
+
+        // ---- Auto contrast ----
+        function getTextColor(bgColor) {
+            const h = bgColor.replace('#', '');
+            if (h.length < 6) return '#09090b';
+            const r = parseInt(h.slice(0,2), 16);
+            const g = parseInt(h.slice(2,4), 16);
+            const b = parseInt(h.slice(4,6), 16);
+            const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return lum > 0.5 ? '#09090b' : '#ffffff';
+        }
+
+        // ---- Constants ----
+        const THEMES = [
+            { id: 'anac-flex', name: 'ANAC Flex', bgColor: '#0c2b5c', textColor: '#ffffff', accent: '#1e5ab5', hasCustomImages: true, revealTheme: 'black' },
+            { id: 'anac-2023-1', name: 'ANAC 2023 M1', bgColor: '#1a3a6b', textColor: '#ffffff', accent: '#2a5a9b', revealTheme: 'black' },
+            { id: 'anac-2023-2', name: 'ANAC 2023 M2', bgColor: '#0d4a2b', textColor: '#ffffff', accent: '#1a7a4b', revealTheme: 'black' },
+            { id: 'anac-2023-3', name: 'ANAC 2023 M3', bgColor: '#5b2d1a', textColor: '#ffffff', accent: '#8b4a3a', revealTheme: 'black' },
+            { id: 'anac-20anos-1', name: 'ANAC 20 Anos M1', bgColor: '#0c2b5c', textColor: '#ffffff', accent: '#c9a84c', revealTheme: 'black' },
+            { id: 'anac-20anos-2', name: 'ANAC 20 Anos M2', bgColor: '#1a3a6b', textColor: '#ffffff', accent: '#4a8ac9', revealTheme: 'black' },
+            { id: 'anac-20anos-azul', name: 'ANAC 20 Anos Azul', bgColor: '#183859', textColor: '#ffffff', accent: '#F8B133', hasCustomImages: true, revealTheme: 'black', defaultCover: ANAC_DEFAULTS.anac20anosAzulCover, defaultClose: ANAC_DEFAULTS.anac20anosAzulClose },
+            { id: 'white', name: 'Branco', bgColor: '#ffffff', textColor: '#09090b', accent: '#18181b', revealTheme: 'white' },
+            { id: 'black', name: 'Preto', bgColor: '#191919', textColor: '#ffffff', accent: '#ffffff', revealTheme: 'black' },
+            { id: 'beige', name: 'Bege', bgColor: '#f7f3de', textColor: '#09090b', accent: '#18181b', revealTheme: 'beige' },
+            { id: 'sky', name: 'Azul Claro', bgColor: '#f3f4f5', textColor: '#09090b', accent: '#18181b', revealTheme: 'sky' },
+            { id: 'night', name: 'Noite', bgColor: '#111111', textColor: '#ffffff', accent: '#ffffff', revealTheme: 'night' },
+        ];
+
+        function getTheme(id) { return THEMES.find(t => t.id === id) || THEMES[0]; }
+
+        const SLIDE_SEP = "\n\n---\n\n";
+        const DEFAULT_SLIDES = [
+            "## Bem-vindo!\n\nEdite seu conteudo aqui.\n\nUse as ferramentas acima ou Markdown direto.",
+            "## Novo Slide\n\nAdicione conteudo"
+        ];
+
+        const LAYOUTS = {
+            'half': `\n<div class="columns-2">\n\n<div class="column">\n\n### Coluna 1\nConteudo\n\n</div>\n\n<div class="column">\n\n### Coluna 2\nConteudo\n\n</div>\n\n</div>\n`,
+            'thirds': `\n<div class="columns-3">\n\n<div class="column">\n\n#### Coluna 1\nConteudo\n\n</div>\n\n<div class="column">\n\n#### Coluna 2\nConteudo\n\n</div>\n\n<div class="column">\n\n#### Coluna 3\nConteudo\n\n</div>\n\n</div>\n`,
+            '2/3 left': `\n<div class="columns-2-1">\n\n<div class="column-large">\n\n### Principal\nConteudo longo\n\n</div>\n\n<div class="column-small">\n\n#### Lateral\nComplemento\n\n</div>\n\n</div>\n`,
+            '2/3 right': `\n<div class="columns-1-2">\n\n<div class="column-small">\n\n#### Lateral\nComplemento\n\n</div>\n\n<div class="column-large">\n\n### Principal\nConteudo longo\n\n</div>\n\n</div>\n`
+        };
+
+        const TOOLBAR_ITEMS = [
+            { type: 'btn', icon: 'heading-1', action: 'md', before: '# ', after: '', title: 'Titulo H1' },
+            { type: 'btn', icon: 'heading-2', action: 'md', before: '## ', after: '', title: 'Titulo H2' },
+            { type: 'btn', icon: 'heading-3', action: 'md', before: '### ', after: '', title: 'Titulo H3' },
+            { type: 'sep' },
+            { type: 'btn', icon: 'bold', action: 'md', before: '**', after: '**', title: 'Negrito' },
+            { type: 'btn', icon: 'italic', action: 'md', before: '*', after: '*', title: 'Italico' },
+            { type: 'btn', icon: 'underline', action: 'md', before: '__', after: '__', title: 'Sublinhado' },
+            { type: 'btn', icon: 'strikethrough', action: 'md', before: '~~', after: '~~', title: 'Tachado' },
+            { type: 'btn', icon: 'highlighter', action: 'md', before: '==', after: '==', title: 'Destaque' },
+            { type: 'sep' },
+            { type: 'btn', icon: 'list', action: 'md', before: '- ', after: '', title: 'Lista' },
+            { type: 'btn', icon: 'list-ordered', action: 'md', before: '1. ', after: '', title: 'Lista Numerica' },
+            { type: 'btn', icon: 'quote', action: 'md', before: '> ', after: '', title: 'Citacao' },
+            { type: 'btn', icon: 'code', action: 'md', before: '`', after: '`', title: 'Codigo' },
+            { type: 'sep' },
+            { type: 'btn', icon: 'link', action: 'md', before: '[', after: '](url)', title: 'Link' },
+            { type: 'btn', icon: 'image', action: 'image-upload', title: 'Inserir Imagem (arquivo)' },
+            { type: 'sep' },
+            { type: 'btn', icon: 'columns-2', action: 'layout', layout: 'half', title: 'Layout Metade' },
+            { type: 'btn', icon: 'columns-3', action: 'layout', layout: 'thirds', title: 'Layout tercos' },
+            { type: 'btn', icon: 'panel-left', action: 'layout', layout: '2/3 left', title: '2/3 Esquerda' },
+            { type: 'btn', icon: 'panel-right', action: 'layout', layout: '2/3 right', title: '2/3 Direita' }
+        ];
+
+        const ADVANCED_OPTIONS = [
+            { key: 'transition', label: 'Transicao', type: 'select', options: ['slide', 'fade', 'convex', 'concave', 'zoom', 'none'], default: 'slide' },
+            { key: 'bgTransition', label: 'Trans. Fundo', type: 'select', options: ['slide', 'fade', 'convex', 'concave', 'zoom', 'none'], default: 'fade' },
+            { key: 'autoAnimate', label: 'Auto-Animar', type: 'toggle', default: true },
+            { key: 'slideNumbers', label: 'Numeros nos Slides', type: 'toggle', default: true },
+            { key: 'controls', label: 'Controles', type: 'toggle', default: true },
+            { key: 'progress', label: 'Barra de Progresso', type: 'toggle', default: true },
+            { key: 'touch', label: 'Toque/Touch', type: 'toggle', default: true },
+            { key: 'center', label: 'Centralizar Conteudo', type: 'toggle', default: false },
+        ];
+
+        // ---- Image condensation ----
+        const IMG_RE = /!\[([^\]]*)\]\((data:image\/[^;]+;base64,[^)]+)\)/g;
+        const TOKEN_RE = /\[img:(\d+)\]/g;
+
+        function getImageStore(imgRef) {
+            if (!imgRef.current._map) imgRef.current._map = {};
+            if (imgRef.current._nextId === undefined) imgRef.current._nextId = 0;
+            return imgRef.current;
+        }
+
+        function condenseText(text, imgRef) {
+            if (!text) return text;
+            const store = getImageStore(imgRef);
+            const map = store._map;
+            return text.replace(IMG_RE, (match, alt, dataUrl) => {
+                for (const k of Object.keys(map)) {
+                    if (map[k].dataUrl === dataUrl) return `[img:${k}]`;
+                }
+                const id = store._nextId++;
+                map[id] = { alt, dataUrl };
+                return `[img:${id}]`;
+            });
+        }
+
+        function expandText(text, imgRef) {
+            if (!text) return text;
+            const store = getImageStore(imgRef);
+            const map = store._map;
+            return text.replace(TOKEN_RE, (match, id) => {
+                const entry = map[id];
+                if (entry && entry.dataUrl) return `![${entry.alt}](${entry.dataUrl})`;
+                return match;
+            });
+        }
+
+        function getSlideWithExpanded(text, imgRef) {
+            if (!text) return text;
+            const store = getImageStore(imgRef);
+            const map = store._map;
+            let result = text;
+            for (const id of Object.keys(map)) {
+                const entry = map[id];
+                if (entry && result.includes(`[img:${id}]`)) {
+                    result = result.replaceAll(`[img:${id}]`, `![${entry.alt}](${entry.dataUrl})`);
+                }
+            }
+            return result;
+        }
+
+        function getBase64Size(dataUrl) {
+            const raw = dataUrl.split(',')[1] || '';
+            return Math.round(raw.length * 0.75);
+        }
+
+        function readFileAsDataURL(file) {
+            return new Promise((resolve) => {
+                const r = new FileReader();
+                r.onload = () => resolve(r.result);
+                r.readAsDataURL(file);
+            });
+        }
+
+        // ---- App Context ----
+        const AppContext = React.createContext(null);
+
+        // ---- Helper: generate Reveal HTML ----
+        function generateRevealHTML(slides, config, theme, imgRef, adv) {
+            const { title, subtitle, authors, date, coverImg, closeImg } = config;
+            const t = getTheme(theme);
+            const isAnac = theme.startsWith('anac');
+            const tc = t.textColor;
+            const jv = adv.center ? 'center' : 'flex-start';
+            const align = adv.center ? 'center' : 'left';
+            const to = adv.center ? 'center' : 'left';
+            if (imgRef) slides = slides.map(s => getSlideWithExpanded(s, imgRef));
+
+            let slidesHTML = '';
+
+            if (isAnac && theme === 'anac-flex' && title) {
+                let cover = coverImg || t.defaultCover; let bg = cover ? ` data-background-image="${cover}" data-background-size="cover"` : ` style="background-color: ${t.bgColor};"`;
+                slidesHTML += `<section data-state="title-slide"${bg}>`;
+                slidesHTML += `<div class="capa-content">`;
+                slidesHTML += `<h1 style="color:${tc};">${escHtml(title)}</h1>`;
+                if (subtitle) slidesHTML += `<h3 style="color:${tc};">${escHtml(subtitle)}</h3>`;
+                if (authors && authors.length > 0) {
+                    slidesHTML += `<p style="margin-top:30px;font-size:0.6em;opacity:0.8;color:${tc};">${authors.map(escHtml).join(' &bull; ')}</p>`;
+                }
+                if (date) slidesHTML += `<p style="font-size:0.5em;opacity:0.6;color:${tc};">${escHtml(date)}</p>`;
+                slidesHTML += `</div></section>\n\n`;
+            } else if (isAnac && title) {
+                slidesHTML += `<section data-state="title-slide" style="background-color:${t.bgColor};">`;
+                slidesHTML += `<div class="capa-content">`;
+                slidesHTML += `<h1 style="color:${tc};">${escHtml(title)}</h1>`;
+                if (subtitle) slidesHTML += `<h3 style="color:${tc};">${escHtml(subtitle)}</h3>`;
+                if (authors && authors.length > 0) {
+                    slidesHTML += `<p style="margin-top:30px;font-size:0.6em;opacity:0.8;color:${tc};">${authors.map(escHtml).join(' &bull; ')}</p>`;
+                }
+                if (date) slidesHTML += `<p style="font-size:0.5em;opacity:0.6;color:${tc};">${escHtml(date)}</p>`;
+                slidesHTML += `</div></section>\n\n`;
+            }
+
+            slides.forEach(slide => {
+                if (!slide.trim()) return;
+                let parsed = marked.parse(slide.replace(/==([^=]+)==/g, '<mark>$1</mark>'));
+                slidesHTML += `<section data-auto-animate><div class="slide-content" style="color:${tc};">${parsed}</div></section>\n\n`;
+            });
+
+            if (isAnac && (closeImg || t.defaultClose)) {
+                let close = closeImg || t.defaultClose; slidesHTML += `<section data-background-image="${close}" data-background-size="cover"></section>`;
+            }
+
+            const themeUrl = t.revealTheme;
+
+            let html = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${escHtml(title || 'Apresentacao')}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/${themeUrl}.css">
+    <style>
+        .reveal .slides section:not([data-state="title-slide"]) {
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: ${jv};
+            align-items: ${jv};
+            text-align: ${align};
+        }
+        .slide-content { width: 100%; box-sizing: border-box; color: ${tc}; }
+        .slide-content img {
+            max-width: 100% !important;
+            height: auto !important;
+            object-fit: contain;
+            border-radius: 6px;
+        }
+        .slide-bg { width: 100%; border-radius: 8px; margin: 0 auto; ${isAnac ? '' : ''} }
+        .slide-bg-img {
+            max-width: 100%; min-height: 50vh;
+            background-size: contain; background-repeat: no-repeat; background-position: center;
+        }
+        .reveal blockquote { border-left: 4px solid currentColor; padding-left: 1em; font-style: italic; opacity: 0.8; }
+        .reveal mark { background: #fef08a; color: #000; padding: 0.1em 0.2em; }
+        .columns-2, .columns-3, .columns-2-1, .columns-1-2 { display: flex; width: 100%; gap: 2em; align-items: flex-start; justify-content: center; margin-top: 0.5em; }
+        .columns-2 > .column, .columns-3 > .column { flex: 1; }
+        .columns-2-1 > .column-large { flex: 2; }
+        .columns-2-1 > .column-small { flex: 1; }
+        .columns-1-2 > .column-small { flex: 1; }
+        .columns-1-2 > .column-large { flex: 2; }
+        .column, .column-large, .column-small { text-align: center; }
+        ${isAnac ? `
+        @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap");
+        .reveal { font-family: "Montserrat", sans-serif; background-color: ${t.bgColor}; }
+        .reveal * { color: ${tc} !important; }
+        .reveal h1, .reveal h2, .reveal h3 { font-family: "Montserrat", sans-serif; font-weight: 700; text-transform: none; }
+        .reveal h2 { font-size: 1.6em; margin-bottom: 20px; }
+        .reveal h3 { font-size: 1.3em; margin-bottom: 15px; }
+        .reveal h4, .reveal h5, .reveal h6 { font-family: "Montserrat", sans-serif; font-weight: 600; font-size: 1.1em; margin-bottom: 10px; }
+        .reveal h1 { font-size: 2.2em; border-bottom: 2px solid rgba(255,255,255,0.2); padding-bottom: 10px; margin-bottom: 30px; text-align: center; }
+        .reveal a { color: ${t.accent} !important; }
+        .reveal .slides section[data-state="title-slide"] { display: flex !important; align-items: center !important; justify-content: flex-end !important; height: 100%; padding: 0; }
+        .reveal .slides section[data-state="title-slide"] .capa-content { width: 42%; text-align: left; padding: 20px; margin-top: 15%; }
+        .reveal .slides section[data-state="title-slide"] .capa-content h1 { font-size: 1.7em; text-align: left; line-height: 1.15; margin-bottom: 10px; border-bottom: none; padding-bottom: 0; }
+        .reveal .slides section[data-state="title-slide"] .capa-content h3 { font-size: 1.3em; text-align: left; opacity: 0.9; }
+        .reveal .slides section[data-state="title-slide"] .capa-content p { font-size: 0.8em; margin-top: 40px; }
+        ` : ''}
+    </style>
+</head>
+<body>
+    <div class="reveal"><div class="slides">
+        ${slidesHTML}
+    </div></div>
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"><\/script>
+    <script>
+        Reveal.initialize({
+            hash: true, center: false, width: 1280, height: 720, margin: 0.04,
+            slideNumber: '${adv.slideNumbers ? 'c/t' : ''}',
+            controls: ${adv.controls},
+            progress: ${adv.progress},
+            touch: ${adv.touch},
+            transition: '${adv.transition}',
+            backgroundTransition: '${adv.bgTransition}',
+            autoAnimate: ${adv.autoAnimate}
+        });
+        window.addEventListener("resize", function() { var a = Reveal.getCurrentSlide(); if(a) adj(); });
+        function adj() {
+            var cur = Reveal.getCurrentSlide();
+            if (!cur) return;
+            var con = cur.querySelector(".slide-content");
+            if (!con) return;
+
+            con.style.transform = "none";
+            con.style.width = "";
+            con.style.display = "";
+            con.style.alignItems = "";
+            con.style.justifyContent = "";
+
+            var cols = con.querySelectorAll(".column, .column-large, .column-small");
+            for (var i = 0; i < cols.length; i++) cols[i].style.fontSize = "";
+
+            var imgs = con.querySelectorAll("img");
+            for (var i = 0; i < imgs.length; i++) {
+                imgs[i].style.maxHeight = "";
+                imgs[i].style.maxWidth = "";
+                imgs[i].style.width = "";
+                imgs[i].style.height = "";
+            }
+
+            var pad = 60;
+            var maxH = cur.offsetHeight - pad;
+            var maxW = cur.offsetWidth - pad;
+
+            if (cols.length > 0) {
+                var parent = cols[0].parentElement;
+                var availColH = parent.offsetHeight || maxH * 0.7;
+                var maxColH = 0;
+                for (var i = 0; i < cols.length; i++) {
+                    var ch = cols[i].scrollHeight;
+                    if (ch > maxColH) maxColH = ch;
+                }
+                if (maxColH > availColH) {
+                    var pct = Math.max(40, Math.round((availColH / maxColH) * 100));
+                    for (var i = 0; i < cols.length; i++) cols[i].style.fontSize = pct + "%";
+                }
+            }
+
+            var hasOnlyImg = imgs.length > 0;
+            if (hasOnlyImg) {
+                var texts = [];
+                var walk = function(el) {
+                    for (var i = 0; i < el.childNodes.length; i++) {
+                        var n = el.childNodes[i];
+                        if (n.nodeType === 3 && n.textContent.trim()) texts.push(n.textContent);
+                        else if (n.nodeType === 1 && n.tagName !== "IMG" && n.tagName !== "BR") walk(n);
+                    }
+                };
+                walk(con);
+                hasOnlyImg = texts.length === 0;
+            }
+
+            if (hasOnlyImg && imgs.length === 1) {
+                con.style.display = "flex";
+                con.style.alignItems = "center";
+                con.style.justifyContent = "center";
+                var img = imgs[0];
+                var maxImgW = maxW * 0.92;
+                var maxImgH = maxH * 0.92;
+                img.style.maxWidth = "100%";
+                img.style.width = "auto";
+                img.style.height = "auto";
+                if (img.naturalWidth && img.naturalHeight) {
+                    var ratio = img.naturalWidth / img.naturalHeight;
+                    var fitW = Math.min(img.naturalWidth, maxImgW);
+                    var fitH = fitW / ratio;
+                    if (fitH > maxImgH) { fitH = maxImgH; fitW = fitH * ratio; }
+                    img.style.width = fitW + "px";
+                    img.style.height = fitH + "px";
+                    img.style.maxWidth = "none";
+                }
+                return;
+            }
+
+            if (imgs.length > 0) {
+                for (var i = 0; i < imgs.length; i++) {
+                    var img = imgs[i];
+                    img.style.maxWidth = "100%";
+                    img.style.height = "auto";
+                    if (img.naturalWidth && img.naturalWidth > maxW * 0.9) {
+                        var s = (maxW * 0.9) / img.naturalWidth;
+                        img.style.width = (img.naturalWidth * s) + "px";
+                        img.style.height = (img.naturalHeight * s) + "px";
+                    }
+                }
+            }
+
+            var sx = 1, sy = 1;
+            if (con.scrollWidth > maxW) sx = maxW / con.scrollWidth;
+            if (con.scrollHeight > maxH) sy = maxH / con.scrollHeight;
+            var s = Math.min(sx, sy, 1);
+            if (s < 1) {
+                con.style.transformOrigin = "${to} top";
+                con.style.transform = "scale(" + s + ")";
+                con.style.width = (maxW / s) + "px";
+            }
+        }
+        Reveal.on("ready", adj); Reveal.on("slidechanged", adj);
+    <\/script>
+</body>
+</html>`;
+            return html;
+        }
+
+        function escHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        // ============ COMPONENTS ============
+
+        function Header() {
+            const ctx = useContext(AppContext);
+            const { slides, currentIndex, theme, setTheme, config, previewSlides, downloadHTML, downloadPDF, downloadTXT, openMetadata, setAdvOpen } = ctx;
+            const [themeOpen, setThemeOpen] = useState(false);
+            const [exportOpen, setExportOpen] = useState(false);
+            const themeRef = useRef(null);
+            const exportRef = useRef(null);
+
+            useEffect(() => {
+                function handleClick(e) {
+                    if (themeRef.current && !themeRef.current.contains(e.target)) setThemeOpen(false);
+                    if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false);
+                }
+                document.addEventListener('mousedown', handleClick);
+                return () => document.removeEventListener('mousedown', handleClick);
+            }, []);
+
+            const t = getTheme(theme);
+
+            return (
+                <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-2 shrink-0">
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-lg font-semibold text-zinc-900 tracking-tight flex items-center gap-2">
+                            <Icon name="presentation" className="w-5 h-5 text-blue-600" />
+                            ANAC Slides v2
+                        </h1>
+                        <span className="text-sm font-medium text-zinc-500 bg-zinc-100 px-2 py-1 rounded-md">
+                            Slide {currentIndex + 1}/{slides.length}
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-zinc-200 rounded-md hover:bg-zinc-100"
+                            onClick={openMetadata}
+                            title="Metadados da Apresentacao"
+                        >
+                            <Icon name="file-text" className="w-4 h-4" />
+                            <span className="hidden sm:inline">Metadados</span>
+                        </button>
+
+                        <div className="relative" ref={themeRef}>
+                            <button
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-zinc-200 rounded-md hover:bg-zinc-100"
+                                onClick={() => { setThemeOpen(!themeOpen); setExportOpen(false); }}
+                            >
+                                <div className="w-3 h-3 rounded-full border border-zinc-200" style={{ backgroundColor: t.bgColor }}></div>
+                                <Icon name="palette" className="w-4 h-4" />
+                            </button>
+                            <div className={`dropdown-content ${themeOpen ? 'open' : ''}`} style={{ right: 0, maxHeight: '70vh', overflowY: 'auto' }}>
+                                <div className="px-2 py-1.5 text-xs font-semibold text-zinc-500">Tema da Apresentacao</div>
+                                <hr className="my-1 border-zinc-200" />
+                                {THEMES.map(t => (
+                                    <a key={t.id} className="dropdown-item" onClick={() => { setTheme(t.id); setConfig(prev => ({ ...prev, coverImg: t.defaultCover || prev.coverImg, closeImg: t.defaultClose || prev.closeImg })); setThemeOpen(false); }}>
+                                        <div className="w-3 h-3 rounded-full border border-zinc-200" style={{ backgroundColor: t.bgColor }}></div>
+                                        <span>{t.name}</span>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button
+                            className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-zinc-100 text-zinc-700"
+                            onClick={() => setAdvOpen(true)}
+                            title="Configuracoes Avancadas"
+                        >
+                            <Icon name="sliders-horizontal" className="w-4 h-4" />
+                        </button>
+
+                        <button
+                            className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-zinc-100 text-zinc-700"
+                            onClick={previewSlides}
+                            title="Visualizar (Nova Aba)"
+                        >
+                            <Icon name="play" className="w-4 h-4" />
+                        </button>
+
+                        <div className="relative" ref={exportRef}>
+                            <button
+                                className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-zinc-100 text-zinc-700"
+                                onClick={() => { setExportOpen(!exportOpen); setThemeOpen(false); }}
+                            >
+                                <Icon name="download" className="w-4 h-4" />
+                            </button>
+                            <div className={`dropdown-content ${exportOpen ? 'open' : ''}`}>
+                                <a className="dropdown-item" onClick={() => { downloadHTML(); setExportOpen(false); }}>
+                                    <Icon name="file-code" className="w-4 h-4" /> Exportar HTML
+                                </a>
+                                <a className="dropdown-item" onClick={() => { downloadPDF(); setExportOpen(false); }}>
+                                    <Icon name="file-text" className="w-4 h-4" /> Exportar PDF (Print)
+                                </a>
+                                <a className="dropdown-item" onClick={() => { downloadTXT(); setExportOpen(false); }}>
+                                    <Icon name="file" className="w-4 h-4" /> Exportar TXT (Pandoc)
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+            );
+        }
+
+        const fileInputRef = React.createRef();
+
+        function Toolbar() {
+            const ctx = useContext(AppContext);
+            const { insertMD, insertLayout, insertImages } = ctx;
+
+            function handleClick(item) {
+                if (item.action === 'md') {
+                    insertMD(item.before, item.after);
+                } else if (item.action === 'layout') {
+                    insertLayout(item.layout);
+                } else if (item.action === 'image-upload') {
+                    fileInputRef.current.click();
+                }
+            }
+
+            function handleFileChange(e) {
+                const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+                if (files.length > 0) insertImages(files);
+                e.target.value = '';
+            }
+
+            return (
+                <div className="flex items-center gap-0.5 overflow-x-auto border-b border-zinc-200 bg-zinc-50/50 px-2 py-1.5 shrink-0">
+                    <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+                    {TOOLBAR_ITEMS.map((item, i) => {
+                        if (item.type === 'sep') return <div key={i} className="toolbar-sep"></div>;
+                        return (
+                            <button key={i} className="toolbar-btn" onClick={() => handleClick(item)} title={item.title}>
+                                <Icon name={item.icon} className="w-4 h-4" />
+                            </button>
+                        );
+                    })}
+                    <div className="toolbar-sep"></div>
+                    <GalleryButton />
+                </div>
+            );
+        }
+
+        function GalleryButton() {
+            const { setGalleryOpen } = useContext(AppContext);
+            return (
+                <button className="toolbar-btn" onClick={() => setGalleryOpen(true)} title="Imagens incorporadas">
+                    <Icon name="images" className="w-4 h-4" />
+                </button>
+            );
+        }
+
+        // ---- TagInput Component ----
+        function TagInput({ tags, onChange, placeholder }) {
+            const [input, setInput] = useState('');
+
+            function addTag(val) {
+                const v = val.trim();
+                if (v && !tags.includes(v)) {
+                    onChange([...tags, v]);
+                }
+                setInput('');
+            }
+
+            function handleKey(e) {
+                if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    addTag(input);
+                } else if (e.key === 'Backspace' && !input && tags.length > 0) {
+                    onChange(tags.slice(0, -1));
+                }
+            }
+
+            return (
+                <div className="tag-input" onClick={() => document.getElementById('tag-input-field')?.focus()}>
+                    {tags.map((tag, i) => (
+                        <span key={i} className="tag" style={{ backgroundColor: 'var(--muted)', color: 'var(--foreground)' }}>
+                            {tag}
+                            <span className="tag-remove" style={{ backgroundColor: 'var(--muted-foreground)', color: 'white' }}
+                                onClick={(e) => { e.stopPropagation(); onChange(tags.filter((_, j) => j !== i)); }}>
+                                &times;
+                            </span>
+                        </span>
+                    ))}
+                    <input id="tag-input-field" value={input} onChange={e => setInput(e.target.value)}
+                        onKeyDown={handleKey} onBlur={() => { if (input.trim()) addTag(input); }}
+                        placeholder={tags.length === 0 ? (placeholder || 'Digite e pressione Enter') : ''} />
+                </div>
+            );
+        }
+
+        function Editor() {
+            const ctx = useContext(AppContext);
+            const { editMode, slides, currentIndex, setSlideContent, setSlidesFromFull, editorRef, insertImages, imageStoreRef } = ctx;
+            const [dragOver, setDragOver] = useState(false);
+
+            function getCondensed() {
+                const raw = editMode === 'single' ? (slides[currentIndex] || '') : slides.join(SLIDE_SEP);
+                return condenseText(raw, imageStoreRef);
+            }
+
+            function handleChange(e) {
+                const raw = e.target.value;
+                const full = expandText(raw, imageStoreRef);
+                if (editMode === 'single') {
+                    setSlideContent(full);
+                } else {
+                    const parts = full.split(/\n\n---\n\n|\n---\n/);
+                    setSlidesFromFull(parts.map(p => p.trim()));
+                }
+            }
+
+            function handleFocus(e) {
+                if (editMode === 'single' && DEFAULT_SLIDES.includes(e.target.value)) e.target.select();
+            }
+
+            function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); setDragOver(true); }
+            function handleDragLeave(e) { e.preventDefault(); e.stopPropagation(); setDragOver(false); }
+
+            function handleDrop(e) {
+                e.preventDefault(); e.stopPropagation(); setDragOver(false);
+                const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                if (files.length > 0) insertImages(files);
+            }
+
+            function handlePaste(e) {
+                const items = Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/'));
+                if (items.length > 0) {
+                    e.preventDefault();
+                    const files = items.map(i => i.getAsFile()).filter(Boolean);
+                    if (files.length > 0) insertImages(files);
+                }
+            }
+
+            return (
+                <main
+                    className={`flex-1 overflow-hidden relative ${dragOver ? 'ring-2 ring-blue-500 bg-blue-50/30' : ''}`}
+                    onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
+                >
+                    <textarea id="editor" ref={editorRef} value={getCondensed()}
+                        onChange={handleChange} onFocus={handleFocus} onPaste={handlePaste}
+                        placeholder="Comece a digitar seu slide aqui..." />
+                    {dragOver && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="bg-white/90 rounded-lg px-6 py-4 shadow-lg border-2 border-dashed border-blue-400 text-blue-600 font-medium text-lg">
+                                Solte as imagens para inserir
+                            </div>
+                        </div>
+                    )}
+                </main>
+            );
+        }
+
+        function Footer() {
+            const ctx = useContext(AppContext);
+            const { editMode, setEditMode, slides, currentIndex, nextSlide, prevSlide, addSlide, deleteSlide } = ctx;
+
+            return (
+                <footer className="flex items-center justify-between border-t border-zinc-200 bg-white px-4 py-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <button className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-800"
+                            onClick={() => setEditMode(editMode === 'single' ? 'full' : 'single')}>
+                            <Icon name={editMode === 'single' ? 'split-square-horizontal' : 'layers'} className="w-4 h-4" />
+                            <span>{editMode === 'single' ? 'Modo: Slide Unico' : 'Modo: Todos os Slides'}</span>
+                        </button>
+                        <div className="toolbar-sep mx-2"></div>
+                        {editMode === 'single' && (
+                            <div className="flex items-center gap-1">
+                                <button className="toolbar-btn" onClick={prevSlide} disabled={currentIndex === 0}>
+                                    <Icon name="chevron-left" className="w-4 h-4" />
+                                </button>
+                                <button className="toolbar-btn" onClick={nextSlide} disabled={currentIndex === slides.length - 1}>
+                                    <Icon name="chevron-right" className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    {editMode === 'single' && (
+                        <div className="flex items-center gap-2">
+                            <button className="toolbar-btn text-red-600 hover:bg-red-50" onClick={deleteSlide} disabled={slides.length <= 1} title="Excluir Slide">
+                                <Icon name="trash-2" className="w-4 h-4" />
+                            </button>
+                            <button className="toolbar-btn text-blue-600 hover:bg-blue-50" onClick={addSlide} title="Novo Slide">
+                                <Icon name="plus" className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
+                </footer>
+            );
+        }
+
+        // ---- Metadata Modal ----
+        function MetadataModal() {
+            const ctx = useContext(AppContext);
+            const { config, setConfig, metadataOpen, closeMetadata, theme } = ctx;
+            const t = getTheme(theme);
+
+            if (!metadataOpen) return null;
+
+            function update(field, value) {
+                setConfig(prev => ({ ...prev, [field]: value }));
+            }
+
+            return (
+                <div className="modal-overlay" onClick={closeMetadata}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '36rem' }}>
+                        <h2 className="text-xl font-semibold mb-4 text-zinc-900">Metadados da Apresentacao</h2>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="form-group col-span-2">
+                                <label>Titulo Principal</label>
+                                <input type="text" className="form-control" value={config.title}
+                                    onChange={e => update('title', e.target.value)} />
+                            </div>
+                            <div className="form-group col-span-2">
+                                <label>Subtitulo</label>
+                                <input type="text" className="form-control" value={config.subtitle}
+                                    onChange={e => update('subtitle', e.target.value)} />
+                            </div>
+                            <div className="form-group col-span-2">
+                                <label>Autores</label>
+                                <TagInput tags={config.authors} onChange={v => update('authors', v)}
+                                    placeholder="Nome do autor + Enter" />
+                            </div>
+                            <div className="form-group">
+                                <label>Data</label>
+                                <input type="date" className="form-control" value={config.date}
+                                    onChange={e => update('date', e.target.value)} />
+                            </div>
+                            <div className="form-group flex items-end">
+                                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                    <input type="checkbox" checked={config.center}
+                                        onChange={e => update('center', e.target.checked)} />
+                                    Centralizar conteudo
+                                </label>
+                            </div>
+                            {t.hasCustomImages && (
+                                <>
+                                    <div className="form-group col-span-2">
+                                        <label>Imagem de Capa (URL)</label>
+                                        <input type="text" className="form-control" value={config.coverImg}
+                                            onChange={e => update('coverImg', e.target.value)} />
+                                    </div>
+                                    <div className="form-group col-span-2">
+                                        <label>Imagem de Fechamento</label>
+                                        <input type="text" className="form-control" value={config.closeImg}
+                                            onChange={e => update('closeImg', e.target.value)} />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6">
+                            <button className="px-4 py-2 rounded-md border border-zinc-200 text-sm font-medium hover:bg-zinc-50"
+                                onClick={closeMetadata}>Fechar</button>
+                            <button className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                                onClick={closeMetadata}>Salvar</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ---- Advanced Modal ----
+        function AdvancedModal() {
+            const ctx = useContext(AppContext);
+            const { adv, setAdv, advOpen, setAdvOpen } = ctx;
+
+            if (!advOpen) return null;
+
+            return (
+                <div className="modal-overlay" onClick={() => setAdvOpen(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '32rem' }}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-semibold text-zinc-900">Configuracoes Avancadas (RevealJS)</h2>
+                            <button className="p-1 rounded hover:bg-zinc-100" onClick={() => setAdvOpen(false)}>
+                                <Icon name="x" className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="space-y-3">
+                            {ADVANCED_OPTIONS.map(opt => (
+                                <div key={opt.key} className="flex items-center justify-between">
+                                    <label className="text-sm font-medium text-zinc-700">{opt.label}</label>
+                                    {opt.type === 'select' ? (
+                                        <select className="form-control w-40 text-sm" value={adv[opt.key] ?? opt.default}
+                                            onChange={e => setAdv(prev => ({ ...prev, [opt.key]: e.target.value }))}>
+                                            {opt.options.map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                    ) : (
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" className="sr-only peer"
+                                                checked={adv[opt.key] ?? opt.default}
+                                                onChange={e => setAdv(prev => ({ ...prev, [opt.key]: e.target.checked }))} />
+                                            <div className="w-9 h-5 bg-zinc-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                        </label>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex justify-end mt-6">
+                            <button className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                                onClick={() => setAdvOpen(false)}>Fechar</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ---- Image Gallery Modal ----
+        function ImageGalleryModal({ open, onClose }) {
+            const { slides, currentIndex, setSlides, imageStoreRef } = useContext(AppContext);
+            const fileRef = useRef(null);
+            const [edits, setEdits] = useState({});
+            const [expandedId, setExpandedId] = useState(null);
+            const [bgMode, setBgMode] = useState({});
+            const [align, setAlign] = useState({});
+            const [imgWidth, setImgWidth] = useState({});
+
+            if (!open) return null;
+
+            const store = getImageStore(imageStoreRef);
+            const map = store._map || {};
+            const entries = Object.keys(map).map(id => ({ id, ...map[id] }));
+
+            function applyToSlide(id, newMd) {
+                const oldToken = `[img:${id}]`;
+                const slideText = slides[currentIndex] || '';
+                if (!slideText.includes(oldToken)) return;
+                const updated = slideText.replace(oldToken, newMd);
+                const next = [...slides];
+                next[currentIndex] = updated;
+                setSlides(next);
+            }
+
+            function saveEntry(id) {
+                const ed = edits[id] || {};
+                const entry = map[id];
+                if (!entry) return;
+                const newAlt = ed.alt !== undefined ? ed.alt : entry.alt;
+                const newData = ed.dataUrl !== undefined ? ed.dataUrl : entry.dataUrl;
+                const isBg = bgMode[id] || false;
+                const a = align[id] || 'left';
+                const w = imgWidth[id] || '';
+
+                map[id] = { alt: newAlt, dataUrl: newData };
+
+                let md;
+                if (isBg) {
+                    md = `<div class="slide-bg-img" style="background-image: url(${newData});"></div>`;
+                } else {
+                    const style = w ? ` style="max-width: ${w}"` : '';
+                    const altAttr = newAlt.replace(/"/g, '&quot;');
+                    if (a === 'center') md = `<div align="center"><img src="${newData}" alt="${altAttr}"${style} /></div>`;
+                    else if (a === 'right') md = `<div align="right"><img src="${newData}" alt="${altAttr}"${style} /></div>`;
+                    else md = w ? `<img src="${newData}" alt="${altAttr}"${style} />` : `![${newAlt}](${newData})`;
+                }
+                applyToSlide(id, md);
+                setEdits(prev => { const n = { ...prev }; delete n[id]; return n; });
+            }
+
+            async function addFile(e) {
+                const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+                e.target.value = '';
+                if (files.length === 0) return;
+                const storeData = getImageStore(imageStoreRef);
+                let tokens = '';
+                for (const file of files) {
+                    const dataUrl = await readFileAsDataURL(file);
+                    const alt = file.name.replace(/\.[^.]+$/, '');
+                    const id = storeData._nextId++;
+                    storeData._map[id] = { alt, dataUrl };
+                    tokens += `[img:${id}]`;
+                }
+                const slideText = slides[currentIndex] || '';
+                const next = [...slides];
+                next[currentIndex] = slideText + (slideText ? '\n\n' : '') + tokens;
+                setSlides(next);
+            }
+
+            function removeEntry(id) {
+                const slideText = slides[currentIndex] || '';
+                const updated = slideText.replace(`[img:${id}]`, '').replace(/\n{3,}/g, '\n\n').trim();
+                delete map[id];
+                const next = [...slides];
+                next[currentIndex] = updated;
+                setSlides(next);
+                setEdits(prev => { const n = { ...prev }; delete n[id]; return n; });
+            }
+
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '46rem', maxHeight: '90vh', overflow: 'auto' }}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-semibold text-zinc-900">Imagens Incorporadas</h2>
+                            <div className="flex items-center gap-2">
+                                <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-zinc-200 rounded-md hover:bg-zinc-100"
+                                    onClick={() => fileRef.current.click()}>
+                                    <Icon name="plus" className="w-4 h-4" /> Adicionar
+                                </button>
+                                <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={addFile} />
+                                <button className="p-1 rounded hover:bg-zinc-100" onClick={onClose}>
+                                    <Icon name="x" className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                        {entries.length === 0 && <p className="text-zinc-500 text-sm">Nenhuma imagem incorporada.</p>}
+                        {entries.map(({ id, alt, dataUrl }) => {
+                            const ed = edits[id] || {};
+                            const curAlt = ed.alt !== undefined ? ed.alt : alt;
+                            const curData = ed.dataUrl !== undefined ? ed.dataUrl : dataUrl;
+                            const isBg = bgMode[id] || false;
+                            const a = align[id] || 'left';
+                            const w = imgWidth[id] || '';
+                            const openRaw = expandedId === id;
+                            return (
+                                <div key={id} className="mb-4 border border-zinc-200 rounded-lg overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-2 bg-zinc-50 border-b border-zinc-200 text-sm font-medium text-zinc-700">
+                                        <Icon name="image" className="w-4 h-4 shrink-0" />
+                                        <span className="truncate flex-1">{curAlt || 'sem nome'}</span>
+                                        <span className="text-xs text-zinc-400">{getBase64Size(curData)} bytes</span>
+                                    </div>
+                                    <div className="p-3 flex justify-center bg-zinc-100/50">
+                                        <img src={curData} alt={curAlt} className="max-h-32 rounded shadow-sm" />
+                                    </div>
+                                    <div className="p-3 space-y-2">
+                                        <div>
+                                            <label className="text-xs font-medium text-zinc-500">Texto alternativo (alt)</label>
+                                            <input className="form-control text-sm mt-0.5" value={curAlt}
+                                                onChange={e => setEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), alt: e.target.value } }))} />
+                                        </div>
+                                        <div className="flex gap-2 items-end">
+                                            <div className="flex-1">
+                                                <label className="text-xs font-medium text-zinc-500">Alinhamento</label>
+                                                <div className="flex gap-1 mt-0.5">
+                                                    {['left', 'center', 'right'].map(p => (
+                                                        <button key={p}
+                                                            className={`px-2.5 py-1 text-xs rounded border ${a === p ? 'bg-blue-600 text-white border-blue-600' : 'border-zinc-200 hover:bg-zinc-50'}`}
+                                                            onClick={() => setAlign(prev => ({ ...prev, [id]: p }))}>
+                                                            {p === 'left' ? 'Esquerda' : p === 'center' ? 'Centro' : 'Direita'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="w-28">
+                                                <label className="text-xs font-medium text-zinc-500">Largura</label>
+                                                <input className="form-control text-sm mt-0.5" placeholder="ex: 80%"
+                                                    value={w} onChange={e => setImgWidth(prev => ({ ...prev, [id]: e.target.value }))} />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                                                <input type="checkbox" checked={isBg} onChange={e => setBgMode(prev => ({ ...prev, [id]: e.target.checked }))} />
+                                                <span>Fundo do slide</span>
+                                            </label>
+                                        </div>
+                                        <div>
+                                            <button className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                onClick={() => setExpandedId(openRaw ? null : id)}>
+                                                <Icon name={openRaw ? 'chevron-up' : 'chevron-down'} className="w-3 h-3" />
+                                                {openRaw ? 'Ocultar' : 'Exibir'} base64
+                                            </button>
+                                            {openRaw && (
+                                                <textarea className="form-control text-xs font-mono mt-1 h-20"
+                                                    value={curData}
+                                                    onChange={e => setEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), dataUrl: e.target.value } }))} />
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 px-3 py-2 bg-zinc-50 border-t border-zinc-200">
+                                        <button className="px-3 py-1.5 text-xs font-medium rounded border border-red-200 text-red-600 hover:bg-red-50"
+                                            onClick={() => removeEntry(id)}>Remover</button>
+                                        <button className="px-3 py-1.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700"
+                                            onClick={() => saveEntry(id)}>Salvar</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div className="flex justify-end mt-4">
+                            <button className="px-4 py-2 rounded-md bg-zinc-100 text-sm font-medium hover:bg-zinc-200"
+                                onClick={onClose}>Fechar</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============ APP ============
+        function App() {
+            const [slides, setSlides] = useState([
+                "## Bem-vindo!\n\nEdite seu conteudo aqui.\n\nUse as ferramentas acima ou Markdown direto."
+            ]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [editMode, setEditMode] = useState('single');
+            const [theme, setTheme] = useState('anac-flex');
+            const [metadataOpen, setMetadataOpen] = useState(false);
+            const [advOpen, setAdvOpen] = useState(false);
+            const [adv, setAdv] = useState(Object.fromEntries(ADVANCED_OPTIONS.map(o => [o.key, o.default])));
+            const [config, setConfig] = useState({
+                title: 'Regulacao da Aviação Civil',
+                subtitle: 'Agencia Nacional de Aviacao Civil',
+                authors: ['Equipe ANAC'],
+                date: '',
+                coverImg: 'https://i.imgur.com/EyohbYA.png',
+                closeImg: 'https://i.imgur.com/yNHWPp9.png',
+                center: false
+            });
+            const [galleryOpen, setGalleryOpen] = useState(false);
+
+            const editorRef = useRef(null);
+            const imageStoreRef = useRef({ _nextId: 0 });
+
+            const insertMD = useCallback((before, after) => {
+                const el = editorRef.current;
+                if (!el) return;
+                const start = el.selectionStart;
+                const end = el.selectionEnd;
+                const val = el.value;
+                const sel = val.substring(start, end);
+                const needsNewline = (before === '# ' || before === '- ') && start > 0 && val[start - 1] !== '\n';
+                const prefix = needsNewline ? '\n' : '';
+                const replacement = prefix + before + sel + after;
+                document.execCommand('insertText', false, replacement);
+                el.focus();
+                if (sel.length === 0) { el.selectionStart = start + prefix.length + before.length; el.selectionEnd = el.selectionStart; }
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }, []);
+
+            const insertLayout = useCallback((type) => {
+                const layout = LAYOUTS[type];
+                if (layout) insertMD(layout, '');
+            }, [insertMD]);
+
+            const setSlideContent = useCallback((value) => {
+                setSlides(prev => { const next = [...prev]; next[currentIndex] = value; return next; });
+            }, [currentIndex]);
+
+            const setSlidesFromFull = useCallback((parts) => {
+                setSlides(parts.length > 0 ? parts : ['']);
+            }, []);
+
+            const nextSlide = useCallback(() => setCurrentIndex(i => Math.min(i + 1, slides.length - 1)), [slides.length]);
+            const prevSlide = useCallback(() => setCurrentIndex(i => Math.max(i - 1, 0)), []);
+
+            const addSlide = useCallback(() => {
+                setSlides(prev => { const next = [...prev]; next.splice(currentIndex + 1, 0, "## Novo Slide\n\nAdicione conteudo"); return next; });
+                setCurrentIndex(i => i + 1);
+            }, [currentIndex]);
+
+            const deleteSlide = useCallback(() => {
+                if (slides.length <= 1) return;
+                setSlides(prev => { const next = [...prev]; next.splice(currentIndex, 1); return next; });
+                setCurrentIndex(i => Math.min(i, slides.length - 2));
+            }, [slides.length, currentIndex]);
+
+            const previewSlides = useCallback(() => {
+                const w = window.open();
+                w.document.write(generateRevealHTML(slides, config, theme, imageStoreRef, adv));
+                w.document.close();
+            }, [slides, config, theme, adv]);
+
+            const downloadHTML = useCallback(() => {
+                const blob = new Blob([generateRevealHTML(slides, config, theme, imageStoreRef, adv)], { type: 'text/html' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'apresentacao.html'; a.click();
+            }, [slides, config, theme, adv]);
+
+            const downloadPDF = useCallback(() => {
+                let html = generateRevealHTML(slides, config, theme, imageStoreRef, adv)
+                    .replace('</head>', '<style>@media print { .reveal .slides { height: auto !important; } }</style></head>');
+                const w = window.open('', '_blank'); w.document.write(html); w.document.close();
+                setTimeout(() => { w.print(); }, 1000);
+            }, [slides, config, theme, adv]);
+
+            const downloadTXT = useCallback(() => {
+                let txt = slides.map((s, i) => {
+                    const expanded = imageStoreRef ? getSlideWithExpanded(s, imageStoreRef) : s;
+                    return `--- Slide ${i+1} ---\n${expanded}`;
+                }).join('\n\n');
+                const blob = new Blob([txt], { type: 'text/plain' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'apresentacao.md'; a.click();
+            }, [slides]);
+
+            const insertImage = useCallback((file) => {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const alt = file.name.replace(/\.[^.]+$/, '');
+                    const dataUrl = e.target.result;
+                    const store = getImageStore(imageStoreRef);
+                    const id = store._nextId++;
+                    store._map[id] = { alt, dataUrl };
+                    const token = `[img:${id}]`;
+                    const el = editorRef.current;
+                    if (el) { el.focus(); document.execCommand('insertText', false, token); el.dispatchEvent(new Event('input', { bubbles: true })); }
+                };
+                reader.readAsDataURL(file);
+            }, []);
+
+            const insertImages = useCallback(async (files) => {
+                const store = getImageStore(imageStoreRef);
+                let tokens = '';
+                const el = editorRef.current;
+                for (const file of files) {
+                    if (!file.type.startsWith('image/')) continue;
+                    const dataUrl = await readFileAsDataURL(file);
+                    const alt = file.name.replace(/\.[^.]+$/, '');
+                    const id = store._nextId++;
+                    store._map[id] = { alt, dataUrl };
+                    tokens += `[img:${id}]`;
+                }
+                if (el && tokens) { el.focus(); document.execCommand('insertText', false, tokens); el.dispatchEvent(new Event('input', { bubbles: true })); }
+            }, []);
+
+            const openMetadata = useCallback(() => setMetadataOpen(true), []);
+            const closeMetadata = useCallback(() => setMetadataOpen(false), []);
+
+            const ctxValue = {
+                slides, setSlides, currentIndex, setSlideContent, setSlidesFromFull,
+                editMode, setEditMode, theme, setTheme,
+                config, setConfig, metadataOpen, openMetadata, closeMetadata,
+                adv, setAdv, advOpen, setAdvOpen,
+                editorRef, insertMD, insertLayout, insertImage, insertImages,
+                nextSlide, prevSlide, addSlide, deleteSlide,
+                previewSlides, downloadHTML, downloadPDF, downloadTXT,
+                imageStoreRef, galleryOpen, setGalleryOpen
+            };
+
+            return (
+                <AppContext.Provider value={ctxValue}>
+                    <div className="h-screen flex flex-col overflow-hidden">
+                        <Header />
+                        <Toolbar />
+                        <Editor />
+                        <Footer />
+                        <MetadataModal />
+                        <AdvancedModal />
+                        <ImageGalleryModal open={galleryOpen} onClose={() => setGalleryOpen(false)} />
+                    </div>
+                </AppContext.Provider>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+    </script>
+</body>
+</html>
