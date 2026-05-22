@@ -706,7 +706,7 @@ Conteúdo longo
 
         // ---- Helper: generate Reveal HTML ----
 
-        function generateRevealHTML(slides, config, theme, imgRef) {
+        function generateRevealHTML(slides, config, theme, imgRef, showHint = false) {
 
             const { title, subtitle, author, date, center } = config;
 
@@ -725,6 +725,8 @@ Conteúdo longo
             const themeBg = (themeObj && themeObj.bgColor) || '#0c2b5c';
 
             const themeText = getContrastText(themeBg);
+
+            const capaTextColor = theme === 'anac-20anos-branco' ? themeText : '#ffffff';
 
             const jv = center ? 'center' : 'flex-start';
 
@@ -1126,11 +1128,11 @@ Conteúdo longo
 
         .reveal h1 { font-size: 2.2em; border-bottom: 2px solid rgba(255,255,255,0.2); padding-bottom: 10px; margin-bottom: 30px; text-align: center; }
 
-        .reveal .slides section[data-state='title-slide'] .capa-content h1 { font-size: 1.7em; text-align: left; line-height: 1.15; margin-bottom: 10px; border-bottom: none; padding-bottom: 0; color: #ffffff !important; }
+        .reveal .slides section[data-state='title-slide'] .capa-content h1 { font-size: 1.7em; text-align: left; line-height: 1.15; margin-bottom: 10px; border-bottom: none; padding-bottom: 0; color: ${capaTextColor} !important; }
 
-        .reveal .slides section[data-state='title-slide'] .capa-content h3 { font-size: 1.2em; text-align: left; opacity: 0.9; color: #ffffff !important; }
+        .reveal .slides section[data-state='title-slide'] .capa-content h3 { font-size: 1.2em; text-align: left; opacity: 0.9; color: ${capaTextColor} !important; }
 
-        .reveal .slides section[data-state='title-slide'] .capa-content p { font-size: 0.8em; margin-top: 20px; color: #ffffff !important; }
+        .reveal .slides section[data-state='title-slide'] .capa-content p { font-size: 0.8em; margin-top: 20px; color: ${capaTextColor} !important; }
 
         ${isAnac20 ? `
 
@@ -1178,7 +1180,7 @@ Conteúdo longo
 
             hash: true, center: false, width: 1280, height: 720, margin: 0.04,
 
-            slideNumber: 'c/t', controls: true, progress: true, touch: true,
+            slideNumber: 'c/t', controls: true, progress: true, touch: true, mouseWheel: true,
 
             plugins: [ RevealZoom, RevealSearch, RevealNotes ]
 
@@ -1664,6 +1666,7 @@ Conteúdo longo
 
     <\/script>
 
+    ${showHint ? '<div id="f-hint" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,0.5); font-size:14px; pointer-events:none; z-index:9999; transition: opacity 1s ease-out;">Pressione "F" para alternar a tela cheia do slide</div><script>setTimeout(function(){var e=document.getElementById("f-hint");if(e)e.style.opacity="0";}, 4000);</${"script"}>' : ''}
 </body>
 
 </html>`;
@@ -1769,12 +1772,11 @@ Conteúdo longo
                     <div className="flex items-center gap-2">
 
                         <button
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-zinc-200 rounded-md hover:bg-zinc-100"
+                            className="flex items-center justify-center w-8 h-8 rounded-md border border-transparent hover:border-red-200 hover:bg-red-50 text-red-500 transition-colors"
                             onClick={resetDocument}
-                            title="Novo Documento"
+                            title="Nova Apresentação (Limpar Tudo)"
                         >
-                            <Icon name="file-plus" className="w-4 h-4" />
-                            <span className="hidden sm:inline">Novo</span>
+                            <Icon name="trash-2" className="w-4 h-4" />
                         </button>
 
                         <button
@@ -1928,18 +1930,12 @@ Conteúdo longo
                                     </div>
 
                                     <div className="shortcuts-section">
-
                                         <div className="shortcuts-section-title">Apresentação</div>
-
+                                        <div className="shortcut-row"><kbd>F</kbd><span>Alternar Tela Cheia</span></div>
                                         <div className="shortcut-row"><kbd>Alt+Click</kbd><span>Zoom</span></div>
-
                                         <div className="shortcut-row"><kbd>Ctrl+Shift+F</kbd><span>Buscar</span></div>
-
-                                        <div className="shortcut-row"><kbd>F</kbd><span>Tela cheia</span></div>
-
                                         <div className="shortcut-row"><kbd>S</kbd><span>Notas do Orador</span></div>
-
-                                        <div className="shortcut-row"><kbd>ESC</kbd><span>Visão geral</span></div>
+                                        <div className="shortcut-row"><kbd>ESC</kbd><span>Sair Tela Cheia / Visão Geral</span></div>
 
                                         <div className="shortcut-row"><kbd>B</kbd><span>Pausar</span></div>
 
@@ -2091,6 +2087,38 @@ Conteúdo longo
 
             const { insertMD, insertLayout, insertImages, editorRef, setChartOpen } = ctx;
 
+            const [openDrawer, setOpenDrawer] = useState(null);
+
+            const groups = [];
+            let currentGroup = [];
+            TOOLBAR_ITEMS.forEach(item => {
+                if (item.type === 'sep') {
+                    if (currentGroup.length) groups.push(currentGroup);
+                    currentGroup = [];
+                } else {
+                    currentGroup.push(item);
+                }
+            });
+            if (currentGroup.length) groups.push(currentGroup);
+
+            const groupMeta = [
+                { title: 'Histórico', icon: 'history' },
+                { title: 'Títulos', icon: 'type' },
+                { title: 'Formatação', icon: 'bold' },
+                { title: 'Blocos & Elementos', icon: 'list' },
+                { title: 'Mídia e Layout', icon: 'image' }
+            ];
+
+            useEffect(() => {
+                function close(e) {
+                    if (!e.target.closest('.toolbar-drawer')) {
+                        setOpenDrawer(null);
+                    }
+                }
+                document.addEventListener('mousedown', close);
+                return () => document.removeEventListener('mousedown', close);
+            }, []);
+
 
 
             function handleClick(item) {
@@ -2151,39 +2179,50 @@ Conteúdo longo
 
                     />
 
-                    {TOOLBAR_ITEMS.map((item, i) => {
+                    {/* Desktop Toolbar */}
+                    <div className="hidden sm:flex items-center gap-0.5 w-full">
+                        {TOOLBAR_ITEMS.map((item, i) => {
+                            if (item.type === 'sep') return <div key={i} className="toolbar-sep"></div>;
+                            return (
+                                <React.Fragment key={i}>
+                                    <button className="toolbar-btn" onClick={() => handleClick(item)} title={item.title}>
+                                        <Icon name={item.icon} className="w-4 h-4" />
+                                    </button>
+                                    {item.action === 'image-upload' && <GalleryButton />}
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
 
-                        if (item.type === 'sep') {
-
-                            return <div key={i} className="toolbar-sep"></div>;
-
-                        }
-
-                        return (
-
-                            <React.Fragment key={i}>
-
-                                <button
-
-                                    className="toolbar-btn"
-
-                                    onClick={() => handleClick(item)}
-
-                                    title={item.title}
-
+                    {/* Mobile Toolbar */}
+                    <div className="flex sm:hidden items-center justify-around w-full px-1">
+                        {groups.map((grp, i) => (
+                            <div key={`grp-${i}`} className="relative toolbar-drawer">
+                                <button 
+                                    className={`flex flex-col items-center justify-center p-2 rounded-md transition-colors ${openDrawer === i ? 'bg-zinc-200 text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100'}`}
+                                    onClick={() => setOpenDrawer(openDrawer === i ? null : i)}
+                                    title={groupMeta[i]?.title}
                                 >
-
-                                    <Icon name={item.icon} className="w-4 h-4" />
-
+                                    <Icon name={groupMeta[i]?.icon || 'more-horizontal'} className="w-5 h-5 mb-1" />
+                                    <span className="text-[10px] font-medium leading-none">{groupMeta[i]?.title.split(' ')[0]}</span>
                                 </button>
-
-                                {item.action === 'image-upload' && <GalleryButton />}
-
-                            </React.Fragment>
-
-                        );
-
-                    })}
+                                <div className={`dropdown-content ${openDrawer === i ? 'open' : ''} left-0 w-max max-w-[90vw] grid grid-cols-4 gap-1 p-2`} style={{ zIndex: 60 }}>
+                                    {grp.map((item, j) => (
+                                        <React.Fragment key={j}>
+                                            <button
+                                                className="toolbar-btn flex items-center justify-center p-2 h-10 w-10 rounded hover:bg-zinc-100"
+                                                onClick={() => { handleClick(item); setOpenDrawer(null); }}
+                                                title={item.title}
+                                            >
+                                                <Icon name={item.icon} className="w-5 h-5" />
+                                            </button>
+                                            {item.action === 'image-upload' && <GalleryButton onClickOverride={() => setOpenDrawer(null)} />}
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
 
                 </div>
 
@@ -2193,20 +2232,13 @@ Conteúdo longo
 
 
 
-        function GalleryButton() {
-
+        function GalleryButton({ onClickOverride }) {
             const { setGalleryOpen } = useContext(AppContext);
-
             return (
-
-                <button className="toolbar-btn" onClick={() => setGalleryOpen(true)} title="Imagens incorporadas">
-
+                <button className="toolbar-btn" onClick={() => { setGalleryOpen(true); if(onClickOverride) onClickOverride(); }} title="Imagens incorporadas">
                     <Icon name="images" className="w-4 h-4" />
-
                 </button>
-
             );
-
         }
 
 
@@ -2543,17 +2575,12 @@ Conteúdo longo
                             </button>
 
                             <button
-
-                                className="toolbar-btn text-blue-600 hover:bg-blue-50"
-
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                 onClick={addSlide}
-
-                                title="Novo Slide"
-
+                                title="Adicionar Slide"
                             >
-
                                 <Icon name="plus" className="w-4 h-4" />
-
+                                <span className="hidden sm:inline">Adicionar Slide</span>
                             </button>
 
                         </div>
@@ -3786,6 +3813,18 @@ Conteúdo longo
             const [chartOpen, setChartOpen] = useState(false);
 
             const [fullscreenPreview, setFullscreenPreview] = useState(false);
+            const mouseIdleTimerRef = useRef(null);
+
+            const handleOverlayMouseMove = useCallback(() => {
+                const btn = document.getElementById('fullscreen-close-btn');
+                if (btn) btn.style.opacity = '1';
+                
+                if (mouseIdleTimerRef.current) clearTimeout(mouseIdleTimerRef.current);
+                mouseIdleTimerRef.current = setTimeout(() => {
+                    const btn = document.getElementById('fullscreen-close-btn');
+                    if (btn) btn.style.opacity = '0';
+                }, 2000);
+            }, []);
 
             const [config, setConfig] = useState(savedState?.config || {
 
@@ -4008,13 +4047,26 @@ Conteúdo longo
 
             const showFullscreenPreview = useCallback(() => {
                 setFullscreenPreview(true);
+                setTimeout(() => {
+                    const el = document.getElementById('fullscreen-preview-container');
+                    if (el && el.requestFullscreen) {
+                        el.requestFullscreen().catch(err => console.log(err));
+                    }
+                }, 100);
+            }, []);
+
+            const closeFullscreenPreview = useCallback(() => {
+                setFullscreenPreview(false);
+                if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(err => console.log(err));
+                }
             }, []);
 
             const previewSlides = useCallback(() => {
 
                 const w = window.open();
 
-                w.document.write(generateRevealHTML(slides, config, theme, imageStoreRef));
+                w.document.write(generateRevealHTML(slides, config, theme, imageStoreRef, true));
 
                 w.document.close();
 
@@ -4296,10 +4348,11 @@ Conteúdo longo
                         <ChartModal open={chartOpen} onClose={() => setChartOpen(false)} />
 
                         {fullscreenPreview && (
-                            <div className="fixed inset-0 z-[9999] bg-black">
+                            <div id="fullscreen-preview-container" className="fixed inset-0 z-[9999] bg-black" onMouseMove={handleOverlayMouseMove}>
                                 <button 
-                                    className="absolute top-4 left-4 z-50 flex items-center justify-center w-10 h-10 bg-black/50 hover:bg-black/80 rounded-full text-white transition-colors"
-                                    onClick={() => setFullscreenPreview(false)}
+                                    id="fullscreen-close-btn"
+                                    className="absolute top-4 right-4 z-50 flex items-center justify-center w-10 h-10 bg-black/40 hover:bg-black/60 shadow-lg backdrop-blur-sm rounded-full text-white transition-opacity duration-300"
+                                    onClick={closeFullscreenPreview}
                                     title="Fechar Apresentação"
                                 >
                                     <Icon name="x" className="w-6 h-6" />
@@ -4308,6 +4361,13 @@ Conteúdo longo
                                     className="w-full h-full border-none"
                                     srcDoc={generateRevealHTML(slides, config, theme, imageStoreRef)}
                                     title="Apresentação em Tela Cheia"
+                                    allowFullScreen
+                                    onLoad={(e) => {
+                                        try {
+                                            e.target.contentWindow.addEventListener('mousemove', handleOverlayMouseMove);
+                                            e.target.contentWindow.focus();
+                                        } catch (err) { console.error(err); }
+                                    }}
                                 />
                             </div>
                         )}
